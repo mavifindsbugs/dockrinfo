@@ -110,7 +110,7 @@ func getImageInfo(ctx context.Context, cli *client.Client, imageID string) (Imag
 		}
 	}
 
-	parsedTime, err := time.Parse("2006-01-02T15:04:05.999999999Z", image.Created)
+	//parsedTime, err := time.Parse("2006-01-02T15:04:05.999999999Z", image.Created)
 	if err != nil {
 		panic(err)
 	}
@@ -122,7 +122,7 @@ func getImageInfo(ctx context.Context, cli *client.Client, imageID string) (Imag
 		ID:       image.ID,
 		RepoTags: repoTags,
 		Digests:  image.RepoDigests,
-		Created:  parsedTime,
+		//	Created:  parsedTime,
 	}, nil
 }
 
