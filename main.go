@@ -24,10 +24,10 @@ type ContainerInfo struct {
 }
 
 type ImageInfo struct {
-	ID       string    `json:"id"`
-	RepoTags []string  `json:"repo_tags"`
-	Digests  []string  `json:"digests"`
-	Created  time.Time `json:"created"`
+	ID       string   `json:"id"`
+	RepoTags []string `json:"repo_tags"`
+	Digests  []string `json:"digests"`
+	Created  string   `json:"created"`
 }
 
 func main() {
@@ -122,7 +122,8 @@ func getImageInfo(ctx context.Context, cli *client.Client, imageID string) (Imag
 		ID:       image.ID,
 		RepoTags: repoTags,
 		Digests:  image.RepoDigests,
-		//	Created:  parsedTime,
+		// TODO: Convert to time.Time
+		Created: image.Created,
 	}, nil
 }
 
