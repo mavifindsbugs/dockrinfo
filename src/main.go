@@ -35,7 +35,7 @@ func main() {
 	containers := getContainers()
 
 	for _, c := range containers {
-		fmt.Printf("ID: %s, Name: %s, Image: %s, SHA: %s, BuildAt: %s, ImageInfo: %s \n", c.ID, c.Name, c.Image, c.BuildAt, c.ImageInfo)
+		fmt.Printf("ID: %s, Name: %s, Image: %s, BuildAt: %s, ImageInfo: %s \n", c.ID, c.Name, c.Image, c.BuildAt, c.ImageInfo)
 	}
 
 	router := gin.Default()
@@ -71,7 +71,18 @@ func getContainers() []ContainerInfo {
 		latestSHA := ""
 
 		if len(imageInfo.Digests) != 0 {
-			latestSHA = getDigestInfo(imageInfo.RepoTags[0])
+			var repoTag = imageInfo.RepoTags[0]
+
+			split := strings.Split(repoTag, ":")
+			repo := split[0]
+			tag := split[1]
+
+			latestSHA = getLatestSHAbyAPI(repo, tag)
+			if latestSHA == "" {
+				fmt.Println("Crane fallback!")
+				latestSHA = getLatestSHAbyCrane(repoTag)
+			}
+
 			for _, digest := range imageInfo.Digests {
 				updatable = !strings.Contains(digest, latestSHA)
 			}
@@ -127,7 +138,7 @@ func getImageInfo(ctx context.Context, cli *client.Client, imageID string) (Imag
 	}, nil
 }
 
-func getDigestInfo(image string) string {
+func getLatestSHAbyCrane(image string) string {
 	digest, err := crane.Digest(image)
 	if err != nil {
 		panic(err)
