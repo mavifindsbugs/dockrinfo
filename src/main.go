@@ -9,6 +9,7 @@ import (
 	"github.com/google/go-containerregistry/pkg/crane"
 	"net/http"
 	"strings"
+	"sync"
 	"time"
 )
 
@@ -33,9 +34,11 @@ type ImageInfo struct {
 func main() {
 
 	containers := getContainers()
+	containers = getContainerSHAs(containers)
 
 	for _, c := range containers {
-		fmt.Printf("ID: %s, Name: %s, Image: %s, BuildAt: %s, ImageInfo: %s \n", c.ID, c.Name, c.Image, c.BuildAt, c.ImageInfo)
+		fmt.Printf("ID: %s, Name: %s, Image: %s, BuildAt: %s, LatestSHA: %s, Updatable: %t, ImageInfo: %s \n",
+			c.ID, c.Name, c.Image, c.BuildAt, c.LatestSHA, c.Updatable, c.ImageInfo)
 	}
 
 	router := gin.Default()
@@ -46,6 +49,46 @@ func main() {
 		return
 	}
 
+}
+
+func getContainerSHAs(containers []ContainerInfo) []ContainerInfo {
+	var wg sync.WaitGroup
+	result := make([]ContainerInfo, len(containers))
+
+	for i, c := range containers {
+		wg.Add(1)
+		go func(index int, container ContainerInfo, res []ContainerInfo) {
+			defer wg.Done()
+			res[index] = getContainerSHA(container)
+		}(i, c, result)
+	}
+
+	// Wait for all goroutines to finish
+	wg.Wait()
+
+	return result
+}
+
+func getContainerSHA(c ContainerInfo) ContainerInfo {
+	if len(c.ImageInfo.Digests) != 0 {
+		var repoTag = c.ImageInfo.RepoTags[0]
+
+		split := strings.Split(repoTag, ":")
+		repo := split[0]
+		tag := split[1]
+
+		c.LatestSHA = getLatestSHAbyAPI(repo, tag)
+		if c.LatestSHA == "" {
+			fmt.Println("Crane fallback!")
+			c.LatestSHA = getLatestSHAbyCrane(repoTag)
+		}
+
+		for _, digest := range c.ImageInfo.Digests {
+			c.Updatable = !strings.Contains(digest, c.LatestSHA)
+		}
+	}
+
+	return c
 }
 
 func getContainers() []ContainerInfo {
@@ -67,36 +110,16 @@ func getContainers() []ContainerInfo {
 			panic(err)
 		}
 
-		updatable := false
-		latestSHA := ""
-
-		if len(imageInfo.Digests) != 0 {
-			var repoTag = imageInfo.RepoTags[0]
-
-			split := strings.Split(repoTag, ":")
-			repo := split[0]
-			tag := split[1]
-
-			latestSHA = getLatestSHAbyAPI(repo, tag)
-			if latestSHA == "" {
-				fmt.Println("Crane fallback!")
-				latestSHA = getLatestSHAbyCrane(repoTag)
-			}
-
-			for _, digest := range imageInfo.Digests {
-				updatable = !strings.Contains(digest, latestSHA)
-			}
-		}
-
 		container := ContainerInfo{
 			ID:        rc.ID,
 			Name:      rc.Names[0],
 			Image:     rc.Image,
 			BuildAt:   time.Unix(rc.Created, 0),
 			ImageInfo: imageInfo,
-			LatestSHA: latestSHA,
-			Updatable: updatable,
+			LatestSHA: "",
+			Updatable: false,
 		}
+
 		containers = append(containers, container)
 	}
 
@@ -104,7 +127,9 @@ func getContainers() []ContainerInfo {
 }
 
 func getContainersRoute(c *gin.Context) {
-	c.IndentedJSON(http.StatusOK, getContainers())
+	containers := getContainers()
+	containers = getContainerSHAs(containers)
+	c.IndentedJSON(http.StatusOK, containers)
 }
 
 func getImageInfo(ctx context.Context, cli *client.Client, imageID string) (ImageInfo, error) {
